@@ -71,14 +71,17 @@ $usuario_nome = $usuario_logado ? $_SESSION['usuario_nome'] : '';
                 <img src="../img/img-reiki.png" alt="Sessão de Reiki" class="reiki-main-img">
             </div>
             <div class="reiki-text-container">
-                <p>
-                    O Reiki é uma prática terapêutica baseada na energia vital universal. Seu principal objetivo é promover equilíbrio entre corpo, mente e emoções,
-                    ajudando a reduzir o estresse, trazer relaxamento e melhorar o bem-estar.
-                </p>
-                <p>
-                    Essa energia atua na harmonização dos chakras e no alinhamento físico, emocional, mental e espiritual, proporcionando mais qualidade de vida,
-                    paz interior e equilíbrio energético.
-                </p>
+               <p>
+    O Reiki é uma prática integrativa de origem japonesa, na qual o terapeuta
+    utiliza a imposição de mãos para promover relaxamento profundo e bem-estar.
+    Durante a sessão, você permanece confortavelmente deitado, vestido, em um
+    ambiente tranquilo e acolhedor.
+</p>
+<p>
+    A técnica busca harmonizar corpo e mente, aliviando a tensão do dia a dia
+    e favorecendo a sensação de calma e equilíbrio. Ela é um complemento aos
+    cuidados com a saúde e não substitui acompanhamento médico.
+</p>
             </div>
         </section>
 
