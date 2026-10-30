@@ -121,30 +121,147 @@ document.addEventListener('DOMContentLoaded', function() {
     // ============================================
     // DASHBOARD ADMIN — NOVOS AGENDAMENTOS EM TEMPO REAL
     // ============================================
-    const painelAgendamentos = document.getElementById('tab-agendamentos');
-    if (painelAgendamentos && painelAgendamentos.dataset.ultimoId !== undefined) {
-        let ultimoId = parseInt(painelAgendamentos.dataset.ultimoId, 10) || 0;
+    const notificationBell = document.getElementById('notificationBell');
+    const notificationDropdown = document.getElementById('notificationDropdown');
+    const notificationCount = document.getElementById('notificationCount');
+    const notificationList = document.getElementById('notificationList');
+    const notificationError = document.getElementById('notificationError');
+    const markAllSeen = document.getElementById('markAllSeen');
 
-        const buscarNovos = async () => {
+    if (notificationBell && notificationDropdown && notificationCount && notificationList && notificationError && markAllSeen) {
+        let atualizacaoEmAndamento = null;
+
+        const exibirErroNotificacao = mensagem => {
+            notificationError.textContent = mensagem;
+            notificationError.hidden = !mensagem;
+        };
+
+        const renderizarNotificacoes = agendamentos => {
+            notificationList.replaceChildren();
+            markAllSeen.hidden = agendamentos.length === 0;
+
+            if (agendamentos.length === 0) {
+                notificationList.appendChild(criarElemento('p', 'notification-empty', 'Nenhum agendamento novo.'));
+                return;
+            }
+
+            agendamentos.forEach(ag => {
+                const item = criarElemento('div', 'notification-item');
+                const detalhes = criarElemento('div', 'notification-details');
+                detalhes.appendChild(criarElemento('strong', '', ag.cliente));
+                detalhes.appendChild(criarElemento('span', '', ag.servico));
+                detalhes.appendChild(criarElemento('span', '', ag.data + ' às ' + ag.horario));
+
+                const botao = criarElemento('button', 'notification-mark-one', 'Marcar como visto');
+                botao.type = 'button';
+                botao.dataset.action = 'mark-one';
+                botao.dataset.id = ag.id;
+
+                item.append(detalhes, botao);
+                notificationList.appendChild(item);
+            });
+        };
+
+        const atualizarAgendamentos = async (forcar = false) => {
+            if (atualizacaoEmAndamento) {
+                if (!forcar) return atualizacaoEmAndamento;
+                await atualizacaoEmAndamento;
+            }
+
+            const requisicao = (async () => {
+                try {
+                    const resposta = await fetch('novos-agendamentos.php', { cache: 'no-store' });
+                    const dados = await resposta.json();
+                    if (!resposta.ok || !Array.isArray(dados.novos)) {
+                        throw new Error(dados.erro || 'Resposta inválida ao buscar agendamentos.');
+                    }
+
+                    [...dados.novos].reverse().forEach(ag => {
+                        const linhaExistente = document.querySelector('[data-agendamento-id="' + ag.id + '"]');
+                        if (!linhaExistente) adicionarLinhaAgendamento(ag);
+                    });
+
+                    [
+                        ['statAtivos', dados.total_ativos],
+                        ['statUsuarios', dados.total_usuarios],
+                        ['statNewsletter', dados.total_newsletter],
+                        ['statCancelados', dados.total_cancelados]
+                    ].forEach(([id, total]) => {
+                        const card = document.getElementById(id);
+                        if (card) card.textContent = total;
+                    });
+
+                    notificationCount.textContent = dados.total_novos;
+                    notificationCount.hidden = Number(dados.total_novos) === 0;
+                    notificationBell.setAttribute('aria-label', 'Notificações de novos agendamentos: ' + dados.total_novos);
+                    renderizarNotificacoes(dados.novos);
+                    exibirErroNotificacao('');
+                } catch (erro) {
+                    console.error('Não foi possível atualizar as notificações do dashboard.', erro);
+                    exibirErroNotificacao('Não foi possível atualizar as notificações. Tente novamente em instantes.');
+                }
+            })();
+
+            atualizacaoEmAndamento = requisicao;
             try {
-                const resposta = await fetch('novos-agendamentos.php?desde=' + ultimoId, { cache: 'no-store' });
-                if (!resposta.ok) return;
-                const dados = await resposta.json();
-
-                dados.novos.forEach(ag => {
-                    adicionarLinhaAgendamento(ag);
-                    mostrarNotificacao(ag);
-                    ultimoId = Math.max(ultimoId, ag.id);
-                });
-
-                const statAtivos = document.getElementById('statAtivos');
-                if (statAtivos) statAtivos.textContent = dados.total_ativos;
-            } catch (err) {
-                // Falha temporária de rede: tenta de novo na próxima consulta
+                await requisicao;
+            } finally {
+                if (atualizacaoEmAndamento === requisicao) atualizacaoEmAndamento = null;
             }
         };
 
-        setInterval(buscarNovos, 10000);
+        const fecharDropdown = () => {
+            notificationDropdown.hidden = true;
+            notificationBell.setAttribute('aria-expanded', 'false');
+        };
+
+        notificationBell.addEventListener('click', () => {
+            const abrir = notificationDropdown.hidden;
+            notificationDropdown.hidden = !abrir;
+            notificationBell.setAttribute('aria-expanded', String(abrir));
+        });
+
+        document.addEventListener('click', evento => {
+            if (!notificationBell.parentElement.contains(evento.target)) fecharDropdown();
+        });
+
+        document.addEventListener('keydown', evento => {
+            if (evento.key === 'Escape') fecharDropdown();
+        });
+
+        notificationDropdown.addEventListener('click', async evento => {
+            const botao = evento.target.closest('button[data-action]');
+            if (!botao || botao.disabled) return;
+
+            const marcarTodos = botao.dataset.action === 'mark-all';
+            const dadosPost = marcarTodos
+                ? new URLSearchParams({ todos: '1' })
+                : new URLSearchParams({ id: botao.dataset.id });
+
+            botao.disabled = true;
+            exibirErroNotificacao('');
+
+            try {
+                const resposta = await fetch('marcar-visto.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                    body: dadosPost
+                });
+                const resultado = await resposta.json();
+                if (!resposta.ok || !resultado.sucesso) {
+                    throw new Error(resultado.erro || 'Não foi possível marcar o agendamento como visto.');
+                }
+                await atualizarAgendamentos(true);
+            } catch (erro) {
+                console.error('Não foi possível marcar as notificações como vistas.', erro);
+                exibirErroNotificacao('Não foi possível marcar como visto. Tente novamente.');
+                botao.disabled = false;
+            }
+        });
+
+        markAllSeen.dataset.action = 'mark-all';
+        atualizarAgendamentos();
+        setInterval(atualizarAgendamentos, 30000);
     }
 
     // ============================================
@@ -337,13 +454,15 @@ function criarElemento(tag, classe, texto) {
 
 // Insere o novo agendamento no topo da tabela, destacado
 function adicionarLinhaAgendamento(ag) {
-    const lista = document.getElementById('listaAgendamentos');
+    const cancelado = ag.status === 'Cancelado';
+    const lista = document.getElementById(cancelado ? 'listaCancelados' : 'listaAgendamentos');
     if (!lista) return;
 
-    document.getElementById('tabelaAgendamentos').classList.remove('d-none');
-    document.getElementById('agendamentosVazio').classList.add('d-none');
+    document.getElementById(cancelado ? 'tabelaCancelados' : 'tabelaAgendamentos').classList.remove('d-none');
+    document.getElementById(cancelado ? 'canceladosVazio' : 'agendamentosVazio').classList.add('d-none');
 
-    const tr = criarElemento('tr', 'row-new');
+    const tr = criarElemento('tr');
+    tr.dataset.agendamentoId = ag.id;
 
     const tdCliente = criarElemento('td');
     tdCliente.appendChild(criarElemento('strong', '', ag.cliente));
@@ -356,7 +475,7 @@ function adicionarLinhaAgendamento(ag) {
     tr.appendChild(tdData);
 
     const tdStatus = criarElemento('td');
-    tdStatus.appendChild(criarElemento('span', 'status-badge ' + (ag.status === 'Cancelado' ? 'status-cancelado' : 'status-agendado'), ag.status));
+    tdStatus.appendChild(criarElemento('span', 'status-badge ' + (cancelado ? 'status-cancelado' : 'status-agendado'), cancelado ? 'CANCELADO' : ag.status));
     tr.appendChild(tdStatus);
 
     // Mesmo formulário de remoção usado nas linhas geradas pelo PHP
@@ -385,38 +504,6 @@ function adicionarLinhaAgendamento(ag) {
     lista.prepend(tr);
 }
 
-// Notificação simples no canto da tela, some sozinha depois de alguns segundos
-function mostrarNotificacao(ag) {
-    const area = document.getElementById('toastArea');
-    if (!area) return;
-
-    const toast = criarElemento('div', 'toast');
-    toast.setAttribute('role', 'status');
-
-    const icone = criarElemento('span', 'toast-icon');
-    icone.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>';
-    toast.appendChild(icone);
-
-    const texto = criarElemento('div', 'toast-text');
-    texto.appendChild(criarElemento('strong', '', 'Novo agendamento'));
-    texto.appendChild(criarElemento('span', '', ag.cliente + ' · ' + ag.servico));
-    texto.appendChild(criarElemento('span', 'toast-date', ag.data + ' às ' + ag.horario));
-    toast.appendChild(texto);
-
-    const fechar = criarElemento('button', 'toast-close', '×');
-    fechar.type = 'button';
-    fechar.setAttribute('aria-label', 'Fechar notificação');
-    toast.appendChild(fechar);
-
-    const remover = () => {
-        toast.classList.add('saindo');
-        setTimeout(() => toast.remove(), 300);
-    };
-    fechar.addEventListener('click', remover);
-    setTimeout(remover, 8000);
-
-    area.appendChild(toast);
-}
 function switchTab(tabId) {
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));

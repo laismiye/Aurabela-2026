@@ -2,6 +2,10 @@
    RESET E ESTILOS GLOBAIS
    ============================================ */
 
+:root {
+    --cor-principal: #7A2946;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -1032,6 +1036,140 @@ footer {
     align-items: center;
     gap: 20px;
 }
+.notification-container {
+    position: relative;
+}
+.notification-bell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--cor-principal);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+.notification-bell:hover,
+.notification-bell[aria-expanded="true"] {
+    background-color: rgba(122, 41, 70, 0.08);
+}
+.notification-count {
+    position: absolute;
+    top: 0;
+    right: -2px;
+    min-width: 19px;
+    height: 19px;
+    padding: 0 5px;
+    border: 2px solid #ffffff;
+    border-radius: 12px;
+    background-color: var(--cor-principal);
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 15px;
+    text-align: center;
+}
+.notification-count[hidden] {
+    display: none;
+}
+.notification-dropdown {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    z-index: 1000;
+    width: 360px;
+    max-width: calc(100vw - 32px);
+    overflow: hidden;
+    border: 1px solid #F5E8EC;
+    border-radius: 16px;
+    background-color: #ffffff;
+    box-shadow: 0 10px 30px rgba(122, 41, 70, 0.15);
+}
+.notification-dropdown[hidden] {
+    display: none;
+}
+.notification-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px;
+    border-bottom: 1px solid #F5E8EC;
+    color: var(--cor-principal);
+    font-size: 14px;
+}
+.notification-mark-all,
+.notification-mark-one {
+    border: 1px solid var(--cor-principal);
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--cor-principal);
+    cursor: pointer;
+    font-family: 'Poppins', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 7px 9px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+.notification-mark-all:hover,
+.notification-mark-one:hover {
+    background-color: var(--cor-principal);
+    color: #ffffff;
+}
+.notification-mark-all:disabled,
+.notification-mark-one:disabled {
+    cursor: wait;
+    opacity: 0.6;
+}
+.notification-list {
+    max-height: 360px;
+    overflow-y: auto;
+}
+.notification-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #F9F0F3;
+}
+.notification-item:last-child {
+    border-bottom: 0;
+}
+.notification-details {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+    color: #4A4A4A;
+    font-size: 12px;
+}
+.notification-details strong {
+    overflow-wrap: anywhere;
+    color: var(--cor-principal);
+    font-size: 13px;
+}
+.notification-details span:last-child {
+    color: #8E8E8E;
+}
+.notification-empty,
+.notification-error {
+    padding: 20px 16px;
+    color: #8E8E8E;
+    font-size: 13px;
+    text-align: center;
+}
+.notification-error {
+    padding-bottom: 0;
+    color: #b42318;
+}
+.notification-error[hidden] {
+    display: none;
+}
 .admin-badge {
     font-size: 13px;
     color: #7A2946;
@@ -1223,87 +1361,6 @@ tbody td {
     color: #A37081;
     padding: 40px 0;
     font-style: italic;
-}
-
-/* Novos agendamentos em tempo real */
-tbody tr.row-new {
-    animation: rowNew 4s ease-out;
-}
-@keyframes rowNew {
-    0%, 40% { background-color: #FFF0F3; }
-    100%    { background-color: transparent; }
-}
-.toast-area {
-    position: fixed;
-    top: 96px;
-    right: 24px;
-    z-index: 2000;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    width: 320px;
-    max-width: calc(100vw - 32px);
-}
-.toast {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    background-color: #ffffff;
-    border-left: 4px solid #7A2946;
-    border-radius: 16px;
-    padding: 14px 16px;
-    box-shadow: 0 10px 30px rgba(122, 41, 70, 0.15);
-    animation: toastIn 0.3s ease-out;
-    transition: opacity 0.3s ease, transform 0.3s ease;
-}
-.toast.saindo {
-    opacity: 0;
-    transform: translateX(20px);
-}
-@keyframes toastIn {
-    from { opacity: 0; transform: translateX(20px); }
-    to   { opacity: 1; transform: translateX(0); }
-}
-.toast-icon {
-    width: 36px;
-    height: 36px;
-    flex-shrink: 0;
-    border-radius: 50%;
-    background-color: #FFF0F3;
-    color: #7A2946;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.toast-text {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    font-size: 13px;
-    color: #4A3B40;
-    min-width: 0;
-}
-.toast-text strong {
-    font-size: 14px;
-    color: #7A2946;
-}
-.toast-date {
-    font-size: 12px;
-    color: #A37081;
-}
-.toast-close {
-    background: none;
-    border: none;
-    font-size: 20px;
-    line-height: 1;
-    color: #A37081;
-    cursor: pointer;
-    padding: 0 2px;
-    transition: color 0.2s;
-}
-.toast-close:hover {
-    color: #7A2946;
 }
 
 /* ============================================
@@ -2128,5 +2185,11 @@ tbody tr.row-new {
     }
     .dash-navbar {
         padding: 16px 20px;
+    }
+    .navbar-right {
+        gap: 10px;
+    }
+    .notification-dropdown {
+        right: -75px;
     }
 }

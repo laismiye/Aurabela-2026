@@ -10,16 +10,54 @@ require '../php/conexao.php';
 // Consultas principais para listagem nas tabelas (Agendamentos ordenados por status e data)
 $usuarios = $conn->query("SELECT id, nome, email, criado_em FROM usuarios ORDER BY criado_em DESC");
 $newsletter = $conn->query("SELECT id, email, inscrito_em FROM newsletter ORDER BY inscrito_em DESC");
-$agendamentos = $conn->query("SELECT id, nome, sobrenome, telefone, servico, data_agendamento, horario_agendamento, status FROM agendamentos ORDER BY FIELD(status, 'Agendado', 'Concluído', 'Cancelado'), data_agendamento ASC, horario_agendamento ASC");
+$status_cancelado = 'Cancelado';
+$stmt_agendamentos = $conn->prepare("SELECT id, nome, sobrenome, telefone, servico, data_agendamento, horario_agendamento, status FROM agendamentos WHERE COALESCE(status, 'Agendado') <> ? ORDER BY FIELD(status, 'Agendado', 'Concluído'), data_agendamento ASC, horario_agendamento ASC");
+if (!$stmt_agendamentos) {
+    error_log('Não foi possível preparar a consulta de agendamentos ativos: ' . $conn->error);
+    http_response_code(500);
+    exit('Não foi possível carregar os agendamentos.');
+}
+$stmt_agendamentos->bind_param('s', $status_cancelado);
+if (!$stmt_agendamentos->execute()) {
+    error_log('Não foi possível consultar os agendamentos ativos: ' . $stmt_agendamentos->error);
+    http_response_code(500);
+    exit('Não foi possível carregar os agendamentos.');
+}
+$agendamentos = $stmt_agendamentos->get_result();
+
+$stmt_cancelados = $conn->prepare("SELECT id, nome, sobrenome, telefone, servico, data_agendamento, horario_agendamento FROM agendamentos WHERE status = ? ORDER BY data_agendamento DESC, horario_agendamento DESC, id DESC");
+if (!$stmt_cancelados) {
+    error_log('Não foi possível preparar a consulta de agendamentos cancelados: ' . $conn->error);
+    http_response_code(500);
+    exit('Não foi possível carregar os agendamentos cancelados.');
+}
+$stmt_cancelados->bind_param('s', $status_cancelado);
+if (!$stmt_cancelados->execute()) {
+    error_log('Não foi possível consultar os agendamentos cancelados: ' . $stmt_cancelados->error);
+    http_response_code(500);
+    exit('Não foi possível carregar os agendamentos cancelados.');
+}
+$cancelados = $stmt_cancelados->get_result();
 
 // Consultas para os cards de estatísticas (métricas rápidas)
 $total_usuarios = $conn->query("SELECT COUNT(*) as total FROM usuarios")->fetch_assoc()['total'];
 $total_newsletter = $conn->query("SELECT COUNT(*) as total FROM newsletter")->fetch_assoc()['total'];
-$total_agendamentos = $conn->query("SELECT COUNT(*) as total FROM agendamentos WHERE status = 'Agendado'")->fetch_assoc()['total'];
-$total_cancelados = $conn->query("SELECT COUNT(*) as total FROM agendamentos WHERE status = 'Cancelado'")->fetch_assoc()['total'];
+$stmt_totais_agendamentos = $conn->prepare("SELECT SUM(COALESCE(status, 'Agendado') <> ?) AS total_agendamentos, SUM(status = ?) AS total_cancelados FROM agendamentos");
+if (!$stmt_totais_agendamentos) {
+    error_log('Não foi possível preparar a consulta de totais dos agendamentos: ' . $conn->error);
+    http_response_code(500);
+    exit('Não foi possível carregar os totais dos agendamentos.');
+}
+$stmt_totais_agendamentos->bind_param('ss', $status_cancelado, $status_cancelado);
+if (!$stmt_totais_agendamentos->execute()) {
+    error_log('Não foi possível consultar os totais dos agendamentos: ' . $stmt_totais_agendamentos->error);
+    http_response_code(500);
+    exit('Não foi possível carregar os totais dos agendamentos.');
+}
+$totais_agendamentos = $stmt_totais_agendamentos->get_result()->fetch_assoc();
+$total_agendamentos = (int) $totais_agendamentos['total_agendamentos'];
+$total_cancelados = (int) $totais_agendamentos['total_cancelados'];
 
-// Último ID exibido: a partir dele o painel busca novos agendamentos em tempo real
-$ultimo_agendamento = (int) $conn->query("SELECT MAX(id) as ultimo FROM agendamentos")->fetch_assoc()['ultimo'];
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -38,6 +76,22 @@ $ultimo_agendamento = (int) $conn->query("SELECT MAX(id) as ultimo FROM agendame
     <nav class="dash-navbar">
         <div class="logo-text">Aura Bela</div>
         <div class="navbar-right">
+            <div class="notification-container">
+                <button type="button" class="notification-bell" id="notificationBell" aria-label="Notificações de novos agendamentos" aria-expanded="false" aria-controls="notificationDropdown">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M10 21h4"></path></svg>
+                    <span class="notification-count" id="notificationCount" hidden>0</span>
+                </button>
+                <div class="notification-dropdown" id="notificationDropdown" hidden>
+                    <div class="notification-header">
+                        <strong>Novos agendamentos</strong>
+                        <button type="button" class="notification-mark-all" id="markAllSeen" hidden>Marcar todos como vistos</button>
+                    </div>
+                    <p class="notification-error" id="notificationError" role="alert" hidden></p>
+                    <div class="notification-list" id="notificationList" aria-live="polite">
+                        <p class="notification-empty">Carregando agendamentos...</p>
+                    </div>
+                </div>
+            </div>
             <span class="admin-badge"><?= htmlspecialchars($_SESSION['admin_email']) ?></span>
             <a href="logout-admin.php" class="btn-logout">Sair</a>
         </div>
@@ -56,10 +110,10 @@ $ultimo_agendamento = (int) $conn->query("SELECT MAX(id) as ultimo FROM agendame
 
         <!-- Cards de estatísticas gerais -->
         <div class="stats-grid">
-            <div class="stat-card"><p class="stat-label">Usuários Cadastrados</p><p class="stat-value"><?= $total_usuarios ?></p></div>
-            <div class="stat-card"><p class="stat-label">Inscritos Newsletter</p><p class="stat-value"><?= $total_newsletter ?></p></div>
+            <div class="stat-card"><p class="stat-label">Usuários Cadastrados</p><p class="stat-value" id="statUsuarios"><?= $total_usuarios ?></p></div>
+            <div class="stat-card"><p class="stat-label">Inscritos Newsletter</p><p class="stat-value" id="statNewsletter"><?= $total_newsletter ?></p></div>
             <div class="stat-card"><p class="stat-label">Agendamentos Ativos</p><p class="stat-value" id="statAtivos"><?= $total_agendamentos ?></p></div>
-            <div class="stat-card"><p class="stat-label">Cancelados</p><p class="stat-value"><?= $total_cancelados ?></p></div>
+            <div class="stat-card"><p class="stat-label">Cancelados</p><p class="stat-value" id="statCancelados"><?= $total_cancelados ?></p></div>
         </div>
 
         <!-- Botões de navegação por abas -->
@@ -67,10 +121,11 @@ $ultimo_agendamento = (int) $conn->query("SELECT MAX(id) as ultimo FROM agendame
             <button id="btn-agendamento" class="tab-btn active" onclick="switchTab('tab-agendamentos')">Agendamentos</button>
             <button id="btn-usuario" class="tab-btn" onclick="switchTab('tab-usuarios')">Usuários registrados</button>
             <button id="btn-newsletter" class="tab-btn" onclick="switchTab('tab-newsletter')">Newsletter</button>
+            <button id="btn-cancelados" class="tab-btn" onclick="switchTab('tab-cancelados')">Cancelados</button>
         </div>
 
         <!-- Aba: Agendamentos -->
-        <div id="tab-agendamentos" class="tab-panel active" data-ultimo-id="<?= $ultimo_agendamento ?>">
+        <div id="tab-agendamentos" class="tab-panel active">
             <h2>Próximos Agendamentos Cadastrados</h2>
             <!-- A tabela fica sempre na página para receber os novos agendamentos em tempo real -->
             <table id="tabelaAgendamentos" class="<?= $agendamentos->num_rows > 0 ? '' : 'd-none' ?>">
@@ -86,12 +141,10 @@ $ultimo_agendamento = (int) $conn->query("SELECT MAX(id) as ultimo FROM agendame
                 </thead>
                 <tbody id="listaAgendamentos">
                     <?php while ($ag = $agendamentos->fetch_assoc()): 
-                        // Aplica estilo diferenciado visualmente caso o agendamento esteja cancelado
                         $status_atual = $ag['status'] ? $ag['status'] : 'Agendado';
-                        $classe_status = ($status_atual === 'Cancelado') ? 'status-cancelado' : 'status-agendado';
-                        $estilo_linha = ($status_atual === 'Cancelado') ? 'style="opacity: 0.5; background-color: #fafafa;"' : '';
+                        $classe_status = 'status-agendado';
                     ?>
-                    <tr <?= $estilo_linha ?>>
+                    <tr data-agendamento-id="<?= (int) $ag['id'] ?>">
                         <td><strong><?= htmlspecialchars($ag['nome'] . ' ' . $ag['sobrenome']) ?></strong></td>
                         <td><?= htmlspecialchars($ag['telefone']) ?></td>
                         <td><?= htmlspecialchars($ag['servico']) ?></td>
@@ -186,10 +239,43 @@ $ultimo_agendamento = (int) $conn->query("SELECT MAX(id) as ultimo FROM agendame
             <?php endif; ?>
         </div>
 
-    </div>
+        <!-- Aba: Agendamentos cancelados -->
+        <div id="tab-cancelados" class="tab-panel">
+            <h2>Agendamentos Cancelados</h2>
+            <table id="tabelaCancelados" class="<?= $cancelados->num_rows > 0 ? '' : 'd-none' ?>">
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Telefone</th>
+                        <th>Serviço</th>
+                        <th>Data/Hora</th>
+                        <th>Status</th>
+                        <th style="text-align: right;">Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="listaCancelados">
+                    <?php while ($ag = $cancelados->fetch_assoc()): ?>
+                    <tr data-agendamento-id="<?= (int) $ag['id'] ?>">
+                        <td><strong><?= htmlspecialchars($ag['nome'] . ' ' . $ag['sobrenome']) ?></strong></td>
+                        <td><?= htmlspecialchars($ag['telefone']) ?></td>
+                        <td><?= htmlspecialchars($ag['servico']) ?></td>
+                        <td><span class="tag-date"><?= date('d/m/Y', strtotime($ag['data_agendamento'])) ?> às <?= date('H:i', strtotime($ag['horario_agendamento'])) ?>h</span></td>
+                        <td><span class="status-badge status-cancelado">CANCELADO</span></td>
+                        <td style="text-align: right;">
+                            <form method="POST" action="excluir.php" onsubmit="return confirmarExclusao('este agendamento');" style="display:inline;">
+                                <input type="hidden" name="id" value="<?= (int) $ag['id'] ?>">
+                                <input type="hidden" name="tipo" value="agendamento">
+                                <button type="submit" class="btn-delete">Remover</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <?php endwhile; ?>
+                </tbody>
+            </table>
+            <p class="empty-msg <?= $cancelados->num_rows > 0 ? 'd-none' : '' ?>" id="canceladosVazio">Nenhum agendamento cancelado.</p>
+        </div>
 
-    <!-- Área das notificações de novos agendamentos -->
-    <div class="toast-area" id="toastArea" aria-live="polite"></div>
+    </div>
 
     <!-- Script para controle de troca de abas e modal de confirmação -->
     <script src="../js/main.js?v=<?= filemtime(__DIR__ . '/../js/main.js') ?>"></script>
