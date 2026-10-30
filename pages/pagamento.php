@@ -97,7 +97,7 @@ $codigo_pix .= crc16Pix($codigo_pix);
                 <button type="button" class="pay-method" data-method="pix">Pix</button>
             </div>
 
-            <p class="pay-hint">Em caso de interesse em parcelamento, entre em contato com a clínica via WhatsApp.</p>
+            <p class="pay-installment-notice">* Em caso de interesse em parcelamento, entre em contato com a clínica via WhatsApp. *</p>
 
             <div class="pay-panel active" data-panel="link">
                 <p class="pay-hint">Envie ou abra o link abaixo para concluir o pagamento.</p>
